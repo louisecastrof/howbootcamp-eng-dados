@@ -129,3 +129,9 @@ ui-tests/playwright-report
 
 # CSV
 *.csv
+
+#banco de dados
+db
+
+#Virtual Environments
+.venv
