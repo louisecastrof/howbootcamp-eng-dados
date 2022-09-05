@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 import datetime
+import json
+from typing import List
 
 import requests
 import logging
@@ -67,8 +69,41 @@ class TradesApi(MercadoBitcoinApi):
 
         return endpoint
 
-print(TradesApi("BTC").get_data())
-print(TradesApi("BTC").get_data(date_from=datetime.datetime(2021, 6, 2)))
-print(TradesApi("BTC").get_data(date_from=datetime.datetime(2021, 6, 2), date_to=datetime.datetime(2021, 6, 3)))
+# print(TradesApi("BTC").get_data())
+# print(TradesApi("BTC").get_data(date_from=datetime.datetime(2021, 6, 2)))
+# print(TradesApi("BTC").get_data(date_from=datetime.datetime(2021, 6, 2), date_to=datetime.datetime(2021, 6, 3)))
 
+class DataTypeNotSupportedForIngestionException(Exception):
+    def __init__(self, data):
+        self.data = data
+        self.message = f"Data type {type(data)} is not supported for ingestion"
+        super().__init__(self.message)
+
+class DataWriter:
+
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+
+    def _write_row(self, row: str) -> None:
+        with open(self.filename, "a") as f:
+            f.write(row)
+
+    def write(self, data: [List, dict]) -> None:
+        if isinstance(data, dict):
+            self._write_row(json.dumps(data) + '\n')
+        elif isinstance(data, List):
+            for element in data:
+                self.write(element)
+        else:
+            raise DataTypeNotSupportedForIngestionException(data)
+
+    
+
+data = DaySummaryApi("BTC").get_data(date=datetime.date(2021, 6, 20))
+writer = DataWriter('day_summary.json')
+writer.write(data)
+
+data = TradesApi("BTC").get_data()
+writer = DataWriter('trades.json')
+writer.write(data)
 
