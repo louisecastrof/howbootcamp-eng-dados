@@ -135,3 +135,6 @@ db
 
 #Virtual Environments
 .venv
+
+#JSON
+*.json
