@@ -1,10 +1,17 @@
 from abc import ABC, abstractmethod
 import datetime
+from genericpath import exists
 import json
+import os
 from typing import List
-
+# from mercado_bitcoin.apis import DaySummaryApi
 import requests
 import logging
+import time
+import schedule
+import ratelimit
+import backoff
+
 
 #print(requests.get("https://www.mercadobitcoin.net/api/BTC/day-summary/2021/6/22").json())
 logger = logging.getLogger(__name__)
@@ -21,6 +28,9 @@ class MercadoBitcoinApi(ABC):
         #return f"{self.base_endpoint}/{self.coin}/day-summary/2021/6/21"
         pass
 
+    @backoff.on_exception(backoff.expo, ratelimit.RateLimitException, max_tries=10)
+    @ratelimit.limits(calls=29, period=30)
+    @backoff.on_exception(backoff.expo, requests.exceptions.HTTPError, max_tries=10)
     def get_data(self, **kwargs) -> dict:
         endpoint = self._get_endpoint(**kwargs)
         logger.info(f"Getting data from endpoint: {endpoint}")
@@ -81,14 +91,19 @@ class DataTypeNotSupportedForIngestionException(Exception):
 
 class DataWriter:
 
-    def __init__(self, filename: str) -> None:
-        self.filename = filename
+    def __init__(self, coin: str, api: str) -> None:
+        self.coin = coin
+        self.api = api
+        now = datetime.datetime.now()
+        current_time = now.strftime("%H_%M_%S")
+        self.filename = f"{self.api}/{self.coin}/{str(datetime.datetime.now().date()) + current_time}.json"
 
     def _write_row(self, row: str) -> None:
+        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
         with open(self.filename, "a") as f:
             f.write(row)
 
-    def write(self, data: [List, dict]) -> None:
+    def write(self, data: [List, dict]):
         if isinstance(data, dict):
             self._write_row(json.dumps(data) + '\n')
         elif isinstance(data, List):
@@ -99,11 +114,71 @@ class DataWriter:
 
     
 
-data = DaySummaryApi("BTC").get_data(date=datetime.date(2021, 6, 20))
-writer = DataWriter('day_summary.json')
-writer.write(data)
+# data = DaySummaryApi("BTC").get_data(date=datetime.date(2021, 6, 20))
+# writer = DataWriter('day_summary.json')
+# writer.write(data)
 
-data = TradesApi("BTC").get_data()
-writer = DataWriter('trades.json')
-writer.write(data)
+# data = TradesApi("BTC").get_data()
+# writer = DataWriter('trades.json')
+# writer.write(data)
 
+class DataIngestor(ABC):
+
+    def __init__(self, writer, coins: List[str], default_start_date: datetime.date) -> None:
+        self.default_start_date = default_start_date
+        self.coins = coins
+        self.writer = writer
+        self._checkpoint = self._load_checkpoint()
+    
+    @property
+    def _checkpoint_filename(self) -> str:
+        return f"{self.__class__.__name__}.checkpoint"
+
+    def _write_checkpoint(self):
+        with open(self._checkpoint_filename, "w") as f:
+            f.write(f"{self._checkpoint}")
+
+    def _load_checkpoint(self) -> datetime.datetime:
+        try:
+            with open(self._checkpoint_filename, "r") as f:
+                return datetime.datetime.strptime(f.read(), "%Y-%m-%d").date()
+        except FileNotFoundError:
+            return None
+
+    def _get_checkpoint(self):
+        if not self._checkpoint:
+            return self.default_start_date
+        else:
+            return self._checkpoint
+    
+    def _update_checkpoint(self, value):
+        self._checkpoint = value
+        self._write_checkpoint()
+
+
+    @abstractmethod
+    def ingest(self) -> None:
+        pass
+    
+    
+class DaySummaryIngestor(DataIngestor):
+
+    def ingest(self) -> None:
+        date = self._get_checkpoint()
+        if date < datetime.date.today():
+            for coin in self.coins:
+                api = DaySummaryApi(coin=coin)
+                data = api.get_data(date=date)
+                self.writer(coin=coin, api=api.type).write(data)
+            self._update_checkpoint(date + datetime.timedelta(days=1))
+
+# writer = DataWriter('day_summary.json')
+ingestor = DaySummaryIngestor(writer=DataWriter, coins=["BTC", "ETH", "LTC", "BCH"], default_start_date=datetime.date(2021, 6, 1))
+
+@schedule.repeat(schedule.every(1).seconds)
+def job():
+    ingestor.ingest()
+
+while True:
+    schedule.run_pending()
+    time.sleep(0.5)
