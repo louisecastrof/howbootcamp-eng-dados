@@ -1,5 +1,9 @@
 import datetime
 import pytest
+import sys
+
+sys.path.insert(1, 'C:\\Users\\Jessi\\OneDrive\\Área de Trabalho\\Repos Bootcamp\\How - Engenharia de Dados\\howbootcamp-eng-dados\\A006')
+
 from apis import DaySummaryApi, TradesApi
 
 class TestDaySummaryApi:
