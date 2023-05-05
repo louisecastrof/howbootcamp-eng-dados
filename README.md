@@ -1,3 +1,3 @@
 
 # Arquitetura do Projeto Final:
-<img src="img\arquitetura.png"></img> 
+<img src="img\arquitetura_how.png"></img> 
