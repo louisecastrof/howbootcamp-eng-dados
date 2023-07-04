@@ -1,11 +1,11 @@
-import importlib
+
 import requests
 import pandas as pd
 import collections
 import sys
 
-# url = 'https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados?modalidade=Lotofácil'
-url = sys.argv[1]
+url = 'https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados?modalidade=Lotofácil'
+
 
 print('''
 ####Buscando os dados no servidor####
@@ -17,7 +17,10 @@ print('''
 ''')
 
 #puxar HTML em raw
+r_text = r.text.replace('\\r\\n', '')
 r_text = r.text.replace('"\r\n}', '')
+r_text = r.text.replace('{\r\n  "html": "', '')
+r_text[:15]
 
 print('''
 ####Criando um dataframe do pandas####
